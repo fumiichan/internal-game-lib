@@ -1,0 +1,16 @@
+locales/
+pnacl/
+swiftshader/
+Applications/
+nw.app/apps/
+nw.app/save/
+nw.app/translations
+credits.html
+*.exe
+*.dll
+*.dat
+*.nexe
+*.pak
+*.bin
+*vk_swiftshader_icd.json
+.idea/

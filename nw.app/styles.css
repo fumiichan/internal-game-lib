@@ -1,0 +1,12 @@
+html, body, .container-root {
+    background: var(--background);
+}
+
+:root {
+    --font-color-default: #fff;
+    --background: #242424;
+}
+
+.container-root > * {
+    color: var(--font-color-default) !important;
+}
