@@ -10,3 +10,10 @@ html, body, .container-root {
 .container-root > * {
     color: var(--font-color-default) !important;
 }
+
+.list-group-separator {
+     margin-top: 10px;
+     margin-bottom: 10px;
+     width: 100%;
+     display: block;
+}

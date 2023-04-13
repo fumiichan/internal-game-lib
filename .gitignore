@@ -13,3 +13,6 @@ credits.html
 *.bin
 *vk_swiftshader_icd.json
 .idea/
+node_modules/
+Applications/*
+!Applications/.gitkeep

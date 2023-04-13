@@ -1,72 +1,117 @@
 (function () {
-    const fs = require('fs')
-    const path = require('path')
-    const gui = require('nw.gui')
+    var fs = require('fs')
+    var path = require('path')
+    var gui = require('nw.gui')
+
 
     // Constants
-    const NWJS_ROOT = path.dirname(process.execPath);
-    const APPLICATION_ROOT = path.join(NWJS_ROOT, './nw.app/apps')
-    const APP_ROOT = path.join(NWJS_ROOT, 'nw.app')
+    var NWJS_ROOT = path.dirname(process.execPath);
+    var APPLICATION_ROOT = path.join(NWJS_ROOT, './nw.app/apps');
+    var APP_ROOT = path.join(NWJS_ROOT, 'nw.app');
 
     // ======================== Utils ========================
-    console.log('NW.js Root:', NWJS_ROOT);
-    console.log('Applications Root:', APPLICATION_ROOT);
-
     function readApplications() {
         if (!fs.existsSync(APPLICATION_ROOT)) {
             return [];
         }
 
         return fs.readdirSync(APPLICATION_ROOT)
-            .map(x => ({
-                name: x,
-                saveDir: path.join(APPLICATION_ROOT, `${x}/save`),
-                translationDir: path.join(APPLICATION_ROOT, `${x}/translations`),
-                main: `/nw.app/apps/${x}/www/index.html`
-            }))
+            .sort(function (a, b) {
+                var time_a = fs.statSync(path.join(APPLICATION_ROOT, a)).mtimeMs;
+                var time_b = fs.statSync(path.join(APPLICATION_ROOT, b)).mtimeMs;
+
+                return time_b - time_a;
+            })
+            .map(function (x) {
+                var date_now = new Date();
+                date_now.setMonth(date_now.getMonth() - 1);
+
+                var modified_time = fs.statSync(path.join(APPLICATION_ROOT, x)).mtimeMs;
+
+                return {
+                    newInstall: modified_time > date_now.getTime(),
+                    name: x,
+                    saveDir: path.join(APPLICATION_ROOT, `${x}/save`),
+                    translationDir: path.join(APPLICATION_ROOT, `${x}/translations`),
+                    main: `/nw.app/apps/${x}/www/index.html`
+                }
+            });
+    }
+
+    function createOrSymlink(source, target) {
+        if (fs.existsSync(source) && fs.statSync(source).isDirectory()) {
+            fs.symlinkSync(source, target, 'dir');
+            return;
+        }
+
+        fs.mkdirSync(source);
+        createOrSymlink(source, target);
     }
 
     function generateSaveSymlink(saveDir, translationDir, action) {
-        fs.symlinkSync(saveDir, path.join(APP_ROOT, 'save'), 'dir');
-        fs.symlinkSync(translationDir, path.join(APP_ROOT, 'translations'), 'dir');
+        createOrSymlink(saveDir, path.join(APP_ROOT, 'save'));
+        createOrSymlink(translationDir, path.join(APP_ROOT, 'translations'));
         action()
     }
 
+    function unlinkOrIgnore(symlink) {
+        if (!fs.existsSync(symlink)) return;
+        fs.unlinkSync(symlink);
+    }
+
     function removeSymlink(action) {
-        if (fs.existsSync(path.join(APP_ROOT, 'save'))) {
-            fs.unlinkSync(path.join(APP_ROOT, 'save'))
-        }
-
-        if (fs.existsSync(path.join(APP_ROOT, 'translations'))) {
-            fs.unlinkSync(path.join(APP_ROOT, 'translations'))
-        }
-
+        unlinkOrIgnore(path.join(APP_ROOT, 'save'));
+        unlinkOrIgnore(path.join(APP_ROOT, 'translations'));
         action();
     }
 
-    // ======================== Runtime ========================
-    const applications = readApplications()
+    function elementGenerate(elementName, appId, classLists, eventHandler, text, targetAppend) {
+        var el = document.createElement(elementName);
+        el.setAttribute('data-app-id', appId);
 
-    const mainListingEl = document.getElementById('applications-group')
-    for (const app of applications) {
-        const listEl = document.createElement('li')
-        listEl.classList.add('list-group-item')
-        listEl.onclick = function () {
-            generateSaveSymlink(app.saveDir, app.translationDir, function () {
-                const opts = {
-                    inject_js_end: '/nw.app/hooks/rmmvutil.bundle.js'
-                }
-                gui.Window.open(app.main, opts, function (win) {
-                    win.on('close', function () {
-                        removeSymlink(function () {
-                            win.close(true);
-                        })
+        for (var e = 0; e < classLists.length; e++) {
+            el.classList.add(classLists[e]);
+        }
+
+        el.onclick = eventHandler;
+        el.innerText = text;
+        targetAppend?.appendChild(el);
+    }
+
+    // ======================== Runtime ========================
+    var applications = readApplications();
+
+    function start() {
+        var recentListingEl = document.getElementById('recent-applications-group');
+        var mainListingEl = document.getElementById('applications-group');
+        for (var i = 0, l = applications.length; i < l; i++) {
+            var listEl = document.createElement('li');
+            listEl.setAttribute('data-app-id', i);
+            listEl.classList.add('list-group-item');
+            listEl.onclick = function () {
+                var app_id = Number(this.getAttribute('data-app-id'));
+                generateSaveSymlink(applications[app_id].saveDir, applications[app_id].translationDir, function () {
+                    var opts = {
+                        inject_js_end: '/nw.app/hooks/rmmvutil.bundle.js'
+                    }
+                    gui.Window.open(applications[app_id].main, opts, function (cwin) {
+                        cwin.on('close', function () {
+                            removeSymlink(function () {
+                                cwin.close(true);
+                            });
+                        });
                     });
                 });
-            });
-        }
-        listEl.innerText = app.name
+            }
+            listEl.innerText = applications[i].name;
 
-        mainListingEl?.appendChild(listEl)
+            if (applications[i].newInstall) {
+                recentListingEl?.appendChild(listEl);
+                continue;
+            }
+            mainListingEl?.appendChild(listEl);
+        }
     }
+
+    start();
 })();
